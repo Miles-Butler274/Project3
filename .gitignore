@@ -1,0 +1,17 @@
+# Ignore Python cache
+__pycache__
+
+# Ignore commitlint executable
+tools/commitlint*
+
+# Ignore .direnv/ directory
+.direnv/
+
+# Ignore database
+db.sqlite3
+
+# Ignore media files
+media/
+
+# Ignore migration directories
+**/migrations

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Prediction Chatbot</title>
+</head>
+<body>
+    <h1>Prediction Market Chatbot</h1>
+
+    <input id="q" placeholder="Ask a question..." style="width:400px;">
+    <button onclick="send()">Ask</button>
+
+    <h3>Answer:</h3>
+    <pre id="out"></pre>
+
+    <h3>Sources:</h3>
+    <ul id="sources"></ul>
+
+    <script>
+    async function send() {
+        const q = document.getElementById("q").value;
+
+        const res = await fetch(`/chat/api/?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+
+        document.getElementById("out").innerText = data.answer || "";
+
+        const list = document.getElementById("sources");
+        list.innerHTML = "";
+
+        (data.sources || []).forEach((s) => {
+            const li = document.createElement("li");
+            li.innerText = s;
+            list.appendChild(li);
+        });
+    }
+    </script>
+</body>
+</html>

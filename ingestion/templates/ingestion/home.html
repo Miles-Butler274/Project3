@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Ingestion Dashboard</title>
+</head>
+<body>
+    <h1>Ingestion Dashboard</h1>
+
+    {% if messages %}
+        {% for message in messages %}
+            <p>{{ message }}</p>
+        {% endfor %}
+    {% endif %}
+
+    <h2>Polymarket API Ingestion</h2>
+    <form method="post" action="{% url 'ingestion:api' %}">
+        {% csrf_token %}
+        <button type="submit">Ingest Active Polymarket Markets</button>
+    </form>
+
+    <h2>Manual Text Ingestion</h2>
+    <form method="post" action="{% url 'ingestion:text' %}">
+        {% csrf_token %}
+        {{ text_form.as_p }}
+        <button type="submit">Ingest Text</button>
+    </form>
+
+    <h2>Clear Knowledge Base</h2>
+    <form method="post" action="{% url 'ingestion:clear' %}">
+        {% csrf_token %}
+        <button type="submit">Clear All Markets and Documents</button>
+    </form>
+
+    <h2>Recent Jobs</h2>
+    <table border="1" cellpadding="6">
+        <tr>
+            <th>Method</th>
+            <th>Status</th>
+            <th>Source</th>
+            <th>Created</th>
+            <th>Updated</th>
+            <th>Error</th>
+        </tr>
+        {% for job in jobs %}
+        <tr>
+            <td>{{ job.method }}</td>
+            <td>{{ job.status }}</td>
+            <td>{{ job.source_name }}</td>
+            <td>{{ job.records_created }}</td>
+            <td>{{ job.records_updated }}</td>
+            <td>{{ job.error_message }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>
