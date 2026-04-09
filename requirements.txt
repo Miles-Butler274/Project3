@@ -4,3 +4,5 @@ django-bootstrap-form
 numpy
 requests
 google-generativeai
+sentence-transformers
+torch

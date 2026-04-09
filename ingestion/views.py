@@ -2,6 +2,7 @@ from django.contrib import messages
 from django.shortcuts import redirect, render
 from django.utils import timezone
 
+from markets.models import DocumentChunk, Market, SourceDocument
 from .api import ingest_polymarket_markets
 from .forms import TextIngestionForm
 from .models import IngestionJob
@@ -15,6 +16,10 @@ def ingestion_home(request):
         {
             "text_form": TextIngestionForm(),
             "jobs": IngestionJob.objects.order_by("-started_at")[:20],
+            "market_count": Market.objects.count(),
+            "document_count": SourceDocument.objects.count(),
+            "chunk_count": DocumentChunk.objects.count(),
+            "active_market_count": Market.objects.filter(is_active=True).count(),
         },
     )
 
@@ -85,8 +90,9 @@ def clear_knowledge_base_view(request):
         result = clear_knowledge_base()
         job.status = "success"
         job.details = (
-            f"Deleted {result['deleted_markets']} markets and "
-            f"{result['deleted_documents']} documents."
+            f"Deleted {result['deleted_markets']} markets, "
+            f"{result['deleted_documents']} documents, and "
+            f"{result['deleted_chunks']} chunks."
         )
         job.finished_at = timezone.now()
         job.save()

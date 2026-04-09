@@ -18,8 +18,8 @@ def embed_text(text: str) -> list[float]:
 
 
 def cosine_similarity(a, b) -> float:
-    a = np.array(a, dtype=float)
-    b = np.array(b, dtype=float)
+    a = np.array(a or [], dtype=float)
+    b = np.array(b or [], dtype=float)
 
     if a.size == 0 or b.size == 0:
         return 0.0

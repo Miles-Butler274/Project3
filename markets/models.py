@@ -38,3 +38,21 @@ class SourceDocument(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class DocumentChunk(models.Model):
+    document = models.ForeignKey(
+        SourceDocument,
+        on_delete=models.CASCADE,
+        related_name="chunks",
+    )
+    chunk_index = models.IntegerField()
+    text = models.TextField()
+    embedding = models.JSONField(null=True, blank=True)
+
+    class Meta:
+        unique_together = ("document", "chunk_index")
+        ordering = ["document_id", "chunk_index"]
+
+    def __str__(self):
+        return f"{self.document.title} [{self.chunk_index}]"

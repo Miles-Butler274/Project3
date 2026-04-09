@@ -1,7 +1,9 @@
+import math
 import re
 from collections import Counter
 
-from markets.models import Market, SourceDocument
+from markets.embeddings import cosine_similarity, embed_text
+from markets.models import DocumentChunk, Market
 from .llm import generate_grounded_completion
 
 
@@ -12,6 +14,8 @@ STOPWORDS = {
     "to", "of", "in", "on", "for", "with", "about", "from",
     "me", "my", "give", "show", "tell", "please",
     "prediction", "predictions", "market", "markets",
+    "will", "would", "could", "should", "can", "does", "do",
+    "this", "that", "these", "those",
 }
 
 
@@ -53,29 +57,15 @@ def score_text(query_tokens: list[str], text: str) -> int:
 
     counts = Counter(tokenize(text))
     score = 0
-
     for token in query_tokens:
         score += counts[token]
-
     return score
 
 
-def split_into_chunks(text: str, chunk_size: int = 800) -> list[str]:
-    if not text:
-        return []
-
-    text = text.strip()
-    if len(text) <= chunk_size:
-        return [text]
-
-    chunks = []
-    start = 0
-    while start < len(text):
-        end = start + chunk_size
-        chunks.append(text[start:end].strip())
-        start = end
-
-    return [c for c in chunks if c]
+def normalize_keyword_score(score: int) -> float:
+    if score <= 0:
+        return 0.0
+    return min(score / 8.0, 1.0)
 
 
 def infer_query_categories(query: str) -> list[str]:
@@ -99,113 +89,120 @@ Volume: {market.volume if market.volume is not None else "N/A"}
 URL: {market.url or "N/A"}
 """.strip()
 
-def dedupe_by_source(items: list[dict]) -> list[dict]:
+
+def market_volume_boost(volume) -> float:
+    if volume is None:
+        return 0.0
+    return min(math.log10(max(volume, 1.0)) / 10.0, 0.08)
+
+
+def dedupe_sources(items: list[dict], key_fields: tuple[str, ...]) -> list[dict]:
     seen = set()
     out = []
 
     for item in items:
-        key = (item["source"], item["title"])
+        key = tuple(item.get(field) for field in key_fields)
         if key in seen:
             continue
-
         seen.add(key)
         out.append(item)
 
     return out
 
 
-def retrieve_context(query: str, top_k_markets: int = 10, top_k_docs: int = 6) -> dict:
-    lowered = query.lower()
+def retrieve_context(
+    query: str,
+    top_k_markets: int = 6,
+    top_k_chunks: int = 8,
+) -> dict:
     query_tokens = tokenize(query)
     query_categories = infer_query_categories(query)
+    query_embedding = embed_text(query)
 
     market_results = []
-    doc_results = []
-
-    # structured retrieval for custom user stories
-    if "popular" in lowered:
-        for market in Market.objects.filter(is_active=True).order_by("-volume")[:10]:
-            market_results.append({
-                "score": 1000,
-                "title": market.question,
-                "source": market.url or market.question,
-                "content": format_market_context(market),
-            })
-
-    if "underrated" in lowered or "underreviewed" in lowered or "new" in lowered:
-        for market in Market.objects.filter(is_active=True).order_by("volume", "-updated_at")[:10]:
-            market_results.append({
-                "score": 900,
-                "title": market.question,
-                "source": market.url or market.question,
-                "content": format_market_context(market),
-            })
-
-    # general market retrieval
     for market in Market.objects.filter(is_active=True):
         combined = f"{market.question}\n{market.description}\n{market.category}"
-        score = score_text(query_tokens, combined)
+        keyword_score = normalize_keyword_score(score_text(query_tokens, combined))
+        semantic_score = cosine_similarity(query_embedding, market.embedding)
 
+        category_boost = 0.0
         if market.category and market.category.lower() in query_categories:
-            score += 8
+            category_boost = 0.06
 
-        if score > 0:
-            market_results.append({
-                "score": score,
+        final_score = (
+            semantic_score * 0.72
+            + keyword_score * 0.18
+            + category_boost
+            + market_volume_boost(market.volume)
+        )
+
+        if final_score <= 0.12:
+            continue
+
+        market_results.append(
+            {
+                "score": final_score,
                 "title": market.question,
                 "source": market.url or market.question,
                 "content": format_market_context(market),
-            })
+            }
+        )
 
-    # document retrieval
-    for doc in SourceDocument.objects.all():
-        full_text = doc.cleaned_text or doc.raw_text
-        for chunk in split_into_chunks(full_text):
-            score = score_text(query_tokens, chunk)
+    chunk_results = []
+    for chunk in DocumentChunk.objects.select_related("document").all():
+        keyword_score = normalize_keyword_score(score_text(query_tokens, chunk.text))
+        semantic_score = cosine_similarity(query_embedding, chunk.embedding)
 
-            # small category boost if chunk contains related concept hints
-            for category in query_categories:
-                if category in chunk.lower():
-                    score += 2
+        final_score = semantic_score * 0.80 + keyword_score * 0.20
+        if final_score <= 0.10:
+            continue
 
-            if score > 0:
-                doc_results.append({
-                    "score": score,
-                    "title": doc.title,
-                    "source": doc.source_url or doc.title,
-                    "content": chunk,
-                })
+        chunk_results.append(
+            {
+                "score": final_score,
+                "title": chunk.document.title,
+                "source": chunk.document.source_url or chunk.document.title,
+                "content": chunk.text,
+            }
+        )
 
     market_results.sort(key=lambda x: x["score"], reverse=True)
-    doc_results.sort(key=lambda x: x["score"], reverse=True)
+    chunk_results.sort(key=lambda x: x["score"], reverse=True)
 
     return {
-        "markets": dedupe_by_source(market_results)[:top_k_markets],
-        "docs": dedupe_by_source(doc_results)[:top_k_docs],
+        "markets": dedupe_sources(market_results, ("source", "title"))[:top_k_markets],
+        "docs": dedupe_sources(chunk_results, ("source", "content"))[:top_k_chunks],
     }
 
 
 def build_prompt(query: str, retrieved: dict) -> str:
     market_context = "\n\n".join(
-        [f"[MARKET {i+1}]\n{m['content']}" for i, m in enumerate(retrieved["markets"])]
+        f"[MARKET {i + 1}]\n{m['content']}"
+        for i, m in enumerate(retrieved["markets"])
     )
+
     doc_context = "\n\n".join(
-        [f"[DOC {i+1}] {d['title']}\n{d['content']}" for i, d in enumerate(retrieved["docs"])]
+        f"[DOC {i + 1}] {d['title']}\n{d['content']}"
+        for i, d in enumerate(retrieved["docs"])
     )
 
     return f"""
 You are a prediction market analysis assistant.
 
 Use ONLY the retrieved context below.
-Do not invent facts not present in the context.
+Do not invent facts.
 Do not guarantee outcomes.
-Be useful, direct, and grounded.
+If the evidence is weak or incomplete, say so clearly.
+Compare markets only if multiple relevant markets are present.
+Focus on grounded explanation, useful tips, and uncertainty.
 
-When answering:
-- explain what seems most relevant
-- give practical tips on what the user should watch
-- mention uncertainty, limitations, or missing information
-- if the data is weak, say so clearly
+Return ONLY valid JSON in this exact shape:
+{{
+  "answer": "short grounded answer",
+  "key_insights": ["insight 1", "insight 2"],
+  "tips": ["tip 1", "tip 2"],
+  "limitations": ["limit 1", "limit 2"]
+}}
 
 User question:
 {query}
@@ -215,12 +212,6 @@ Retrieved market context:
 
 Retrieved document context:
 {doc_context if doc_context else "No relevant documents found."}
-
-Output format:
-1. Direct answer
-2. Why it matters
-3. Tips / what to watch
-4. Limits of the available data
 """.strip()
 
 
@@ -230,18 +221,25 @@ def generate_rag_answer(query: str) -> dict:
     if not retrieved["markets"] and not retrieved["docs"]:
         return {
             "answer": "I could not find relevant information in the ingested dataset.",
+            "key_insights": [],
+            "tips": [],
+            "limitations": ["No relevant market or document context was retrieved."],
             "sources": [],
         }
 
     prompt = build_prompt(query, retrieved)
-    answer = generate_grounded_completion(prompt)
+    llm_result = generate_grounded_completion(prompt)
 
     sources = []
     for item in retrieved["markets"] + retrieved["docs"]:
-        if item["source"] and item["source"] not in sources:
-            sources.append(item["source"])
+        src = item.get("source")
+        if src and src not in sources:
+            sources.append(src)
 
     return {
-        "answer": answer,
+        "answer": llm_result.get("answer", "").strip(),
+        "key_insights": llm_result.get("key_insights", []),
+        "tips": llm_result.get("tips", []),
+        "limitations": llm_result.get("limitations", []),
         "sources": sources,
     }

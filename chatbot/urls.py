@@ -16,10 +16,13 @@ Including another URLconf
 """
 
 from django.contrib import admin
-from django.urls import path, include
+from django.shortcuts import redirect
+from django.urls import include, path
+
 
 urlpatterns = [
+    path("", lambda request: redirect("/chat/")),
     path("admin/", admin.site.urls),
     path("ingestion/", include("ingestion.urls")),
-    path("chat/", include("chat.urls"))
+    path("chat/", include("chat.urls")),
 ]
