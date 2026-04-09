@@ -144,6 +144,7 @@ def retrieve_context(
                 "score": final_score,
                 "title": market.question,
                 "source": market.url or market.question,
+                "url": market.url or "",
                 "content": format_market_context(market),
             }
         )
@@ -162,6 +163,7 @@ def retrieve_context(
                 "score": final_score,
                 "title": chunk.document.title,
                 "source": chunk.document.source_url or chunk.document.title,
+                "url": chunk.document.source_url or "",
                 "content": chunk.text,
             }
         )
@@ -231,10 +233,37 @@ def generate_rag_answer(query: str) -> dict:
     llm_result = generate_grounded_completion(prompt)
 
     sources = []
-    for item in retrieved["markets"] + retrieved["docs"]:
-        src = item.get("source")
-        if src and src not in sources:
-            sources.append(src)
+    seen = set()
+
+    for item in retrieved["markets"]:
+        url = item.get("url") or ""
+        label = item.get("title") or url or "Market source"
+        key = ("market", url, label)
+        if key in seen:
+            continue
+        seen.add(key)
+        sources.append(
+            {
+                "type": "market",
+                "label": label,
+                "url": url,
+            }
+        )
+
+    for item in retrieved["docs"]:
+        url = item.get("url") or ""
+        label = item.get("title") or "Document source"
+        key = ("document", url, label)
+        if key in seen:
+            continue
+        seen.add(key)
+        sources.append(
+            {
+                "type": "document",
+                "label": label,
+                "url": url,
+            }
+        )
 
     return {
         "answer": llm_result.get("answer", "").strip(),

@@ -92,7 +92,7 @@
             document.getElementById("q").value = text;
         }
 
-        function renderList(listId, items, emptyText, linkify = false) {
+        function renderSimpleList(listId, items, emptyText) {
             const list = document.getElementById(listId);
             list.innerHTML = "";
 
@@ -107,16 +107,57 @@
             items.forEach((item) => {
                 const li = document.createElement("li");
                 li.className = "list-group-item";
+                li.innerText = item;
+                list.appendChild(li);
+            });
+        }
 
-                if (linkify && typeof item === "string" && item.startsWith("http")) {
+        function renderSources(items) {
+            const list = document.getElementById("sources");
+            list.innerHTML = "";
+
+            if (!items || items.length === 0) {
+                const li = document.createElement("li");
+                li.className = "list-group-item text-muted";
+                li.innerText = "No sources returned.";
+                list.appendChild(li);
+                return;
+            }
+
+            items.forEach((item) => {
+                const li = document.createElement("li");
+                li.className = "list-group-item d-flex justify-content-between align-items-start flex-column flex-md-row gap-2";
+
+                const left = document.createElement("div");
+
+                const badge = document.createElement("span");
+                badge.className = item.type === "market"
+                    ? "badge text-bg-primary me-2"
+                    : "badge text-bg-secondary me-2";
+                badge.innerText = item.type === "market" ? "Market" : "Document";
+
+                const label = document.createElement("span");
+                label.className = "fw-medium";
+                label.innerText = item.label || "Source";
+
+                left.appendChild(badge);
+                left.appendChild(label);
+
+                li.appendChild(left);
+
+                if (item.url) {
                     const a = document.createElement("a");
-                    a.href = item;
+                    a.href = item.url;
                     a.target = "_blank";
                     a.rel = "noopener noreferrer";
-                    a.innerText = item;
+                    a.className = "btn btn-sm btn-outline-primary";
+                    a.innerText = item.type === "market" ? "Open on Polymarket" : "Open source";
                     li.appendChild(a);
                 } else {
-                    li.innerText = item;
+                    const span = document.createElement("span");
+                    span.className = "text-muted small";
+                    span.innerText = "No external link";
+                    li.appendChild(span);
                 }
 
                 list.appendChild(li);
@@ -137,18 +178,18 @@
                 const data = await res.json();
 
                 document.getElementById("answer").innerText = data.answer || "";
-                renderList("insights", data.key_insights || [], "No key insights returned.");
-                renderList("tips", data.tips || [], "No tips returned.");
-                renderList("limitations", data.limitations || [], "No limitations returned.");
-                renderList("sources", data.sources || [], "No sources returned.", true);
+                renderSimpleList("insights", data.key_insights || [], "No key insights returned.");
+                renderSimpleList("tips", data.tips || [], "No tips returned.");
+                renderSimpleList("limitations", data.limitations || [], "No limitations returned.");
+                renderSources(data.sources || []);
 
                 resultCard.classList.remove("d-none");
             } catch (err) {
                 document.getElementById("answer").innerText = `Request failed: ${err}`;
-                renderList("insights", [], "No key insights returned.");
-                renderList("tips", [], "No tips returned.");
-                renderList("limitations", ["The browser request failed."], "No limitations returned.");
-                renderList("sources", [], "No sources returned.");
+                renderSimpleList("insights", [], "No key insights returned.");
+                renderSimpleList("tips", [], "No tips returned.");
+                renderSimpleList("limitations", ["The browser request failed."], "No limitations returned.");
+                renderSources([]);
                 resultCard.classList.remove("d-none");
             } finally {
                 loading.classList.add("d-none");
