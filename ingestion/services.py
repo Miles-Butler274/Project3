@@ -1,6 +1,7 @@
 from django.utils import timezone
 
-from markets.models import Market, SourceDocument
+from markets.models import DocumentChunk, Market, SourceDocument
+
 from .utils import clean_text, safe_float
 
 
@@ -45,13 +46,16 @@ def upsert_market_from_dict(data: dict):
 
 
 def clear_knowledge_base():
+    deleted_chunks = DocumentChunk.objects.count()
     deleted_docs = SourceDocument.objects.count()
     deleted_markets = Market.objects.count()
 
+    DocumentChunk.objects.all().delete()
     SourceDocument.objects.all().delete()
     Market.objects.all().delete()
 
     return {
+        "deleted_chunks": deleted_chunks,
         "deleted_documents": deleted_docs,
         "deleted_markets": deleted_markets,
     }
