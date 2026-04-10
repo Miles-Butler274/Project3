@@ -5,98 +5,116 @@ from django.utils import timezone
 
 from .models import IngestionJob
 from .services import upsert_market_from_dict
+from .classifier import classify_market_category_llm
 
 GAMMA_BASE = "https://gamma-api.polymarket.com"
 
 
-def infer_category(question: str, description: str = "") -> str:
-    text = f"{question} {description}".lower()
 
-    if any(
-        word in text
-        for word in [
-            "fifa",
-            "soccer",
-            "football",
-            "nba",
-            "nfl",
-            "mlb",
-            "tennis",
-            "olympics",
-            "world cup",
-            "uefa",
-            "champions league",
-            "sports",
-        ]
-    ):
+import re
+from .classifier import classify_market_category_llm
+
+
+def infer_category(question: str, description: str = "", ticker: str = "") -> str:
+    text = f"{question} {description} {ticker}".lower()
+
+    text = re.sub(r"[^a-z0-9\s\.\-\+]", " ", text)
+    text = re.sub(r"\s+", " ", text)
+
+    def has_any(words):
+        return any(word in text for word in words)
+
+    # ---- SPORTS (expanded heavily) ----
+    if has_any([
+        # leagues
+        "nba", "nfl", "mlb", "nhl", "ufc", "mma",
+        "premier league", "la liga", "serie a", "bundesliga",
+        "champions league", "uefa", "fifa", "world cup",
+
+        # general sports terms
+        "points", "rebounds", "assists", "yards", "touchdown",
+        "goals", "runs scored", "strikeouts", "innings",
+        "match", "game", "final score", "win by", "over", "under",
+
+        # common player names (important for Kalshi)
+        "lebron", "durant", "tatum", "curry", "giannis",
+        "brunson", "adebayo", "mitchell", "anthony davis",
+        "embiid", "luka", "jokic",
+
+        # teams / cities (very important)
+        "boston", "chicago", "miami", "golden state",
+        "lakers", "warriors", "celtics", "knicks",
+        "dallas", "phoenix", "milwaukee", "toronto",
+    ]):
         return "sports"
 
-    if any(
-        word in text
-        for word in [
-            "election",
-            "president",
-            "senate",
-            "congress",
-            "campaign",
-            "vote",
-            "voting",
-            "democrat",
-            "republican",
-            "politics",
-            "trump",
-            "biden",
-        ]
-    ):
+    # ---- POLITICS ----
+    if has_any([
+        "election", "president", "senate", "congress",
+        "vote", "voting", "poll", "approval rating",
+        "democrat", "republican", "campaign",
+        "primary", "runoff", "ballot",
+
+        # people
+        "trump", "biden", "desantis", "kamala",
+        "harris", "rfk", "kennedy",
+
+        # institutions
+        "white house", "supreme court", "governor",
+    ]):
         return "politics"
 
-    if any(
-        word in text
-        for word in [
-            "bitcoin",
-            "btc",
-            "ethereum",
-            "eth",
-            "solana",
-            "crypto",
-            "token",
-            "blockchain",
-        ]
-    ):
+    # ---- CRYPTO ----
+    if has_any([
+        "bitcoin", "btc", "ethereum", "eth", "solana", "sol",
+        "doge", "dogecoin", "xrp", "cardano",
+        "crypto", "token", "blockchain", "defi",
+        "staking", "gas fees", "hashrate",
+    ]):
         return "crypto"
 
-    if any(
-        word in text
-        for word in [
-            "fed",
-            "inflation",
-            "gdp",
-            "tariff",
-            "recession",
-            "economy",
-            "interest rate",
-            "economic",
-        ]
-    ):
+    # ---- ECONOMICS / FINANCE ----
+    if has_any([
+        "inflation", "cpi", "gdp", "fed", "fomc",
+        "interest rate", "rate hike", "rate cut",
+        "recession", "unemployment",
+        "stocks", "s&p", "nasdaq", "dow",
+        "bond", "yield", "treasury",
+        "tariff", "trade deficit",
+        "housing market", "mortgage",
+    ]):
         return "economics"
 
-    if any(
-        word in text
-        for word in [
-            "movie",
-            "film",
-            "tv",
-            "television",
-            "oscar",
-            "grammy",
-            "celebrity",
-            "entertainment",
-        ]
-    ):
+    # ---- ENTERTAINMENT ----
+    if has_any([
+        "movie", "film", "box office", "opening weekend",
+        "tv", "television", "series", "episode",
+        "oscar", "academy awards", "grammy",
+        "emmy", "celebrity", "netflix",
+        "streaming", "show",
+    ]):
         return "entertainment"
 
-    return "general"
+    # ---- EXTRA: WEATHER / RANDOM / EVENTS ----
+    if has_any([
+        "hurricane", "storm", "rainfall", "temperature",
+        "earthquake", "wildfire",
+    ]):
+        return "weather"
 
+    # ---- EXTRA: SCIENCE / TECH ----
+    if has_any([
+        "ai", "artificial intelligence", "openai", "gpt",
+        "spacex", "nasa", "rocket", "launch",
+        "quantum", "chip", "semiconductor",
+    ]):
+        return "science"
+
+    return classify_market_category_llm(
+        question=question,
+        description=description,
+        ticker=ticker,
+    )
 
 def ingest_polymarket_markets(limit: int = 100, active: bool = True, closed: bool = False):
     url = f"{GAMMA_BASE}/markets"
@@ -132,7 +150,11 @@ def ingest_polymarket_markets(limit: int = 100, active: bool = True, closed: boo
                 "market_id": item.get("id"),
                 "question": question,
                 "description": description,
-                "category": infer_category(question, description),
+                "category": infer_category(
+                    question,
+                    description,
+                    str(item.get("id") or ""),
+                ),
                 "probability": _extract_probability(item),
                 "volume": _safe_float(item.get("volume")),
                 "url": item.get("url") or "",

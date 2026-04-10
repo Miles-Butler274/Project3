@@ -100,45 +100,8 @@ def _build_description(item: dict) -> str:
 
 
 def _infer_kalshi_category(item: dict, question: str, description: str) -> str:
-    ticker = str(item.get("ticker") or "").upper()
-    event_title = str(item.get("event_title") or "")
-    series_ticker = str(item.get("series_ticker") or "")
-
-    combined = " ".join([ticker, event_title, series_ticker, question, description]).strip()
-
-    # First use Kalshi-specific ticker hints
-    if "SPORT" in ticker or "NBA" in ticker or "NFL" in ticker or "MLB" in ticker or "SOCCER" in ticker:
-        return "sports"
-
-    if "CRYPTO" in ticker or "BTC" in ticker or "ETH" in ticker:
-        return "crypto"
-
-    if "ELECTION" in ticker or "POLITIC" in ticker or "PRES" in ticker or "SENATE" in ticker:
-        return "politics"
-
-    if "ECON" in ticker or "RATE" in ticker or "INFLATION" in ticker or "GDP" in ticker:
-        return "economics"
-
-    # Cross-category and multigame markets are often still sports in your dataset
-    if "CROSSCATEGORY" in ticker or "MULTIGAME" in ticker or "MULTI" in ticker:
-        guessed = infer_category(combined, description)
-        if guessed != "general":
-            return guessed
-
-        sports_words = [
-            "points", "rebounds", "assists", "goals", "runs scored",
-            "lebron", "durant", "brunson", "adebayo", "tatum",
-            "warriors", "boston", "chicago", "indiana", "toronto",
-        ]
-        text = combined.lower()
-        if any(word in text for word in sports_words):
-            return "sports"
-
-        return "general"
-
-    # Fallback to your existing keyword classifier
-    return infer_category(combined, description)
-
+    ticker = str(item.get("ticker") or "").strip()
+    return infer_category(question, description, ticker)
 
 def _api_market_url(ticker: str) -> str:
     ticker = str(ticker or "").strip()
