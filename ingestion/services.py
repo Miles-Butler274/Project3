@@ -5,6 +5,24 @@ from markets.models import DocumentChunk, Market, SourceDocument
 
 from .utils import clean_text, safe_float, split_text_into_chunks
 
+import time
+import requests
+
+from markets.embeddings import embed_text as _embed_text
+
+
+def embed_text_with_backoff(text: str, retries: int = 5):
+    delay = 1.0
+
+    for attempt in range(retries):
+        try:
+            return _embed_text(text)
+        except Exception as exc:
+            msg = str(exc)
+            if "429" not in msg or attempt == retries - 1:
+                raise
+            time.sleep(delay)
+            delay *= 2
 
 def ingest_text_document(
     title: str,
@@ -20,7 +38,7 @@ def ingest_text_document(
         source_url=source_url,
         raw_text=raw_text,
         cleaned_text=cleaned,
-        embedding=embed_text(f"{title}\n{cleaned}"),
+        embedding=embed_text_with_backoff(f"{title}\n{cleaned}"),
     )
 
     chunks = split_text_into_chunks(cleaned or raw_text)

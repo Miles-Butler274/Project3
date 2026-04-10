@@ -2,7 +2,7 @@ import math
 import re
 from collections import Counter
 
-from markets.embeddings import cosine_similarity, embed_text
+from markets.embeddings import cosine_similarity, embed_query
 from markets.models import DocumentChunk, Market
 from .llm import generate_grounded_completion
 
@@ -117,7 +117,7 @@ def retrieve_context(
 ) -> dict:
     query_tokens = tokenize(query)
     query_categories = infer_query_categories(query)
-    query_embedding = embed_text(query)
+    query_embedding = embed_query(query)
 
     market_results = []
     for market in Market.objects.filter(is_active=True):
