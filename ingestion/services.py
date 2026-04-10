@@ -1,10 +1,9 @@
 from django.utils import timezone
 
+from markets.embeddings import embed_text
 from markets.models import DocumentChunk, Market, SourceDocument
 
-from .utils import clean_text, safe_float
-from markets.embeddings import embed_text
-
+from .utils import clean_text, safe_float, split_text_into_chunks
 
 
 def ingest_text_document(
@@ -15,13 +14,32 @@ def ingest_text_document(
 ):
     cleaned = clean_text(raw_text)
 
-    return SourceDocument.objects.create(
+    doc = SourceDocument.objects.create(
         title=title,
         source_type=source_type,
         source_url=source_url,
         raw_text=raw_text,
         cleaned_text=cleaned,
+        embedding=embed_text(f"{title}\n{cleaned}"),
     )
+
+    chunks = split_text_into_chunks(cleaned or raw_text)
+
+    chunk_objects = []
+    for idx, chunk_text in enumerate(chunks):
+        chunk_objects.append(
+            DocumentChunk(
+                document=doc,
+                chunk_index=idx,
+                text=chunk_text,
+                embedding=embed_text(f"{title}\n{chunk_text}"),
+            )
+        )
+
+    if chunk_objects:
+        DocumentChunk.objects.bulk_create(chunk_objects)
+
+    return doc
 
 
 def upsert_market_from_dict(data: dict):
