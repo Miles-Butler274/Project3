@@ -34,10 +34,20 @@ def _extract_probability(item: dict):
 
 
 def _extract_volume(item: dict):
-    for key in ("volume_fp", "volume", "dollar_volume", "liquidity"):
+    """
+    Prefer contract volume from the market response.
+    Falls back to 24h volume, then open interest if needed.
+    """
+
+    for key in (
+        "volume_fp",
+        "volume_24h_fp",
+        "open_interest_fp",
+    ):
         value = _safe_float(item.get(key))
         if value is not None:
             return value
+
     return None
 
 
