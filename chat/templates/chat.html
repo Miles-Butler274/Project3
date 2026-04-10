@@ -151,9 +151,21 @@
                     a.target = "_blank";
                     a.rel = "noopener noreferrer";
                     a.className = "btn btn-sm btn-outline-primary";
-                    a.innerText = item.type === "market" ? "Open on Polymarket" : "Open source";
-                    li.appendChild(a);
-                } else {
+                    if (item.type === "market") {
+                        const url = (item.url || "").toLowerCase();
+
+                        if (url.includes("kalshi.com")) {
+                            a.innerText = "Open on Kalshi";
+                        } else if (url.includes("polymarket.com")) {
+                            a.innerText = "Open on Polymarket";
+                        } else {
+                            a.innerText = "Open market";
+                        }
+                    } else {
+                        a.innerText = "Open source";
+                    }                 
+                        li.appendChild(a);
+                    } else {
                     const span = document.createElement("span");
                     span.className = "text-muted small";
                     span.innerText = "No external link";

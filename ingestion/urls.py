@@ -8,4 +8,5 @@ urlpatterns = [
     path("api/", views.ingest_api_view, name="api"),
     path("text/", views.ingest_text_view, name="text"),
     path("clear/", views.clear_knowledge_base_view, name="clear"),
+    path("kalshi/", views.ingest_kalshi_view, name="kalshi"),
 ]

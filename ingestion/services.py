@@ -3,6 +3,8 @@ from django.utils import timezone
 from markets.models import DocumentChunk, Market, SourceDocument
 
 from .utils import clean_text, safe_float
+from markets.embeddings import embed_text
+
 
 
 def ingest_text_document(
@@ -27,15 +29,22 @@ def upsert_market_from_dict(data: dict):
     if not market_id:
         raise ValueError("Missing market_id")
 
+    question = clean_text(data.get("question", ""))
+    description = clean_text(data.get("description", ""))
+
+    embedding_input = f"{question}\n{description}"
+    embedding = embed_text(embedding_input)
+
     defaults = {
-        "question": clean_text(data.get("question", "")),
-        "description": clean_text(data.get("description", "")),
+        "question": question,
+        "description": description,
         "category": clean_text(data.get("category", "")),
         "probability": safe_float(data.get("probability")),
         "volume": safe_float(data.get("volume")),
         "url": data.get("url", "") or "",
         "is_active": bool(data.get("is_active", True)),
         "last_ingested_at": timezone.now(),
+        "embedding": embedding,
     }
 
     obj, created = Market.objects.update_or_create(
