@@ -4,6 +4,7 @@ from django.utils import timezone
 from .api import infer_category
 from .models import IngestionJob
 from .services import upsert_market_from_dict
+from .utils import preprocess_text
 
 KALSHI_BASE = "https://api.elections.kalshi.com/trade-api/v2"
 
@@ -115,8 +116,8 @@ def _kalshi_to_market(item: dict) -> dict:
     if not ticker:
         raise ValueError("Missing Kalshi ticker")
 
-    question = _build_question(item)
-    description = _build_description(item)
+    question = preprocess_text(_build_question(item))
+    description = preprocess_text(_build_description(item))
     category = _infer_kalshi_category(item, question, description)
     status = str(item.get("status") or "").strip().lower()
 

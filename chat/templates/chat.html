@@ -50,6 +50,28 @@
                                 Politics
                             </button>
                         </div>
+                        {% if trending_markets %}
+                        <div class="mt-5">
+                            <h2 class="h6 text-muted text-uppercase fw-bold mb-3">🔥 Trending Markets</h2>
+                            <div class="list-group shadow-sm">
+                                {% for market in trending_markets %}
+                                <button type="button" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" onclick="setExample('Give me an analysis and the latest odds for: {{ market.question|escapejs }}'); send();">
+                                    <span class="me-3">
+                                        {% if market.category %}
+                                        <span class="badge text-bg-primary me-2">{{ market.category|title }}</span>
+                                        {% endif %}
+                                        {{ market.question }}
+                                    </span>
+                                    {% if market.volume %}
+                                    <span class="badge bg-light text-dark border rounded-pill">
+                                        ${{ market.volume|floatformat:0 }} Vol
+                                    </span>
+                                    {% endif %}
+                                </button>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
 
@@ -81,6 +103,13 @@
                             <h3 class="h5">Sources</h3>
                             <ul id="sources" class="list-group"></ul>
                         </div>
+
+                        <div id="feedbackContainer" class="mt-4 pt-3 border-top d-none">
+                            <span class="text-muted small me-2">Was this answer helpful?</span>
+                            <button id="btnUp" class="btn btn-sm btn-outline-success me-1" onclick="sendFeedback('up')">👍 Yes</button>
+                            <button id="btnDown" class="btn btn-sm btn-outline-danger" onclick="sendFeedback('down')">👎 No</button>
+                            <span id="feedbackThanks" class="text-success small ms-2 d-none">Thanks for your feedback!</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -88,6 +117,8 @@
     </main>
 
     <script>
+        let currentLogId = null;
+
         function setExample(text) {
             document.getElementById("q").value = text;
         }
@@ -163,9 +194,9 @@
                         }
                     } else {
                         a.innerText = "Open source";
-                    }                 
-                        li.appendChild(a);
-                    } else {
+                    }
+                    li.appendChild(a);
+                } else {
                     const span = document.createElement("span");
                     span.className = "text-muted small";
                     span.innerText = "No external link";
@@ -185,6 +216,17 @@
             loading.classList.remove("d-none");
             resultCard.classList.add("d-none");
 
+            // Hide and reset feedback UI for the new question
+            const feedbackContainer = document.getElementById("feedbackContainer");
+            const feedbackThanks = document.getElementById("feedbackThanks");
+            const btnUp = document.getElementById("btnUp");
+            const btnDown = document.getElementById("btnDown");
+
+            if (feedbackContainer) feedbackContainer.classList.add("d-none");
+            if (feedbackThanks) feedbackThanks.classList.add("d-none");
+            if (btnUp) btnUp.disabled = false;
+            if (btnDown) btnDown.disabled = false;
+
             try {
                 const res = await fetch(`/chat/api/?q=${encodeURIComponent(q)}`);
                 const data = await res.json();
@@ -194,6 +236,12 @@
                 renderSimpleList("tips", data.tips || [], "No tips returned.");
                 renderSimpleList("limitations", data.limitations || [], "No limitations returned.");
                 renderSources(data.sources || []);
+
+                // Capture the Log ID and show the feedback UI
+                currentLogId = data.log_id || null;
+                if (currentLogId && feedbackContainer) {
+                    feedbackContainer.classList.remove("d-none");
+                }
 
                 resultCard.classList.remove("d-none");
             } catch (err) {
@@ -205,6 +253,35 @@
                 resultCard.classList.remove("d-none");
             } finally {
                 loading.classList.add("d-none");
+            }
+        }
+
+        // Function to POST the feedback rating
+        async function sendFeedback(rating) {
+            if (!currentLogId) return;
+
+            const btnUp = document.getElementById("btnUp");
+            const btnDown = document.getElementById("btnDown");
+
+            // Disable buttons immediately to prevent double-clicks
+            if (btnUp) btnUp.disabled = true;
+            if (btnDown) btnDown.disabled = true;
+
+            try {
+                await fetch('/chat/api/rate/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ log_id: currentLogId, rating: rating })
+                });
+
+                // Show the thank you message
+                const feedbackThanks = document.getElementById("feedbackThanks");
+                if (feedbackThanks) feedbackThanks.classList.remove("d-none");
+            } catch (err) {
+                console.error("Failed to send feedback", err);
+                // Re-enable buttons if the request fails
+                if (btnUp) btnUp.disabled = false;
+                if (btnDown) btnDown.disabled = false;
             }
         }
     </script>

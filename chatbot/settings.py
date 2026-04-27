@@ -26,7 +26,7 @@ SECRET_KEY = "django-insecure-=ys*z%$6wjc6$b&cny&to2&qkwx!==^*!o7$nsewj6b4+fl^&g
 DEBUG = True
 
 ALLOWED_HOSTS = [
-    'wrench56.pythonanywhere.com'
+    'wrench56.pythonanywhere.com', '127.0.0.1', 'localhost'
 ]
 
 
@@ -42,7 +42,8 @@ INSTALLED_APPS = [
 
     'chat',
     'markets',
-    'ingestion'
+    'ingestion',
+    'analytics'
 ]
 
 MIDDLEWARE = [

@@ -6,6 +6,7 @@ from django.utils import timezone
 from .models import IngestionJob
 from .services import upsert_market_from_dict
 from .classifier import classify_market_category_llm
+from .utils import preprocess_text
 
 GAMMA_BASE = "https://gamma-api.polymarket.com"
 
@@ -143,8 +144,8 @@ def ingest_polymarket_markets(limit: int = 100, active: bool = True, closed: boo
             raise ValueError("Expected a list from Polymarket /markets endpoint")
 
         for item in items:
-            question = item.get("question") or ""
-            description = item.get("description") or ""
+            question = preprocess_text(item.get("question") or "")
+            description = preprocess_text(item.get("description") or "")
 
             market_data = {
                 "market_id": item.get("id"),

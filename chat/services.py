@@ -78,6 +78,19 @@ def infer_query_categories(query: str) -> list[str]:
 
     return matched
 
+def classify_query_intent(query: str) -> str:
+
+    text = query.lower()
+    if any(word in text for word in ["how", "why", "explain", "meaning", "reason", "break down"]):
+        return "explanation"
+
+    if any(word in text for word in ["imagine", "what if", "scenario", "predict", "creative", "suppose"]):
+        return "creative"
+
+    if any(word in text for word in ["what is", "who is", "when", "current price", "probability of", "odds"]):
+        return "factual"
+
+    return "general"
 
 def format_market_context(market: Market) -> str:
     return f"""
@@ -177,7 +190,7 @@ def retrieve_context(
     }
 
 
-def build_prompt(query: str, retrieved: dict) -> str:
+def build_prompt(query: str, retrieved: dict, intent: str = "general") -> str:
     market_context = "\n\n".join(
         f"[MARKET {i + 1}]\n{m['content']}"
         for i, m in enumerate(retrieved["markets"])
@@ -188,19 +201,31 @@ def build_prompt(query: str, retrieved: dict) -> str:
         for i, d in enumerate(retrieved["docs"])
     )
 
-    return f"""
+    base_instructions = """
 You are a prediction market analysis assistant.
-
 Use ONLY the retrieved context below.
 Do not invent facts.
 Do not guarantee outcomes.
 If the evidence is weak or incomplete, say so clearly.
 Compare markets only if multiple relevant markets are present.
-Focus on grounded explanation, useful tips, and uncertainty.
+    """.strip()
+
+    intent_rules = {
+        "factual": "BEHAVIOR: The user wants a direct factual lookup. Be extremely concise. State the probabilities, volume, and data points clearly without unnecessary elaboration.",
+        "explanation": "BEHAVIOR: The user is asking for an explanation. Break down the reasons, mechanics, or historical context behind the market odds step-by-step.",
+        "creative": "BEHAVIOR: The user is exploring hypotheticals. While staying grounded in the provided facts, creatively explore future implications or alternative scenarios related to the query.",
+        "general": "BEHAVIOR: Focus on grounded explanation, useful tips, and highlighting uncertainty."
+    }
+
+    specific_behavior = intent_rules.get(intent, intent_rules["general"])
+
+    return f"""
+{base_instructions}
+{specific_behavior}
 
 Return ONLY valid JSON in this exact shape:
 {{
-  "answer": "short grounded answer",
+  "answer": "short grounded answer formatted according to BEHAVIOR rules",
   "key_insights": ["insight 1", "insight 2"],
   "tips": ["tip 1", "tip 2"],
   "limitations": ["limit 1", "limit 2"]
@@ -216,7 +241,6 @@ Retrieved document context:
 {doc_context if doc_context else "No relevant documents found."}
 """.strip()
 
-
 def generate_rag_answer(query: str) -> dict:
     retrieved = retrieve_context(query)
 
@@ -229,7 +253,10 @@ def generate_rag_answer(query: str) -> dict:
             "sources": [],
         }
 
-    prompt = build_prompt(query, retrieved)
+    intent = classify_query_intent(query)
+
+    prompt = build_prompt(query, retrieved, intent)
+
     llm_result = generate_grounded_completion(prompt)
 
     sources = []
@@ -271,4 +298,5 @@ def generate_rag_answer(query: str) -> dict:
         "tips": llm_result.get("tips", []),
         "limitations": llm_result.get("limitations", []),
         "sources": sources,
+        "intent": intent,
     }
